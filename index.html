@@ -202,8 +202,8 @@
         if (mouse.down) {
             let dx = mouse.x - mySoul.x;
             let dy = mouse.y - mySoul.y;
-            mySoul.vx += dx * 0.05;
-            mySoul.vy += dy * 0.05;
+            mySoul.vx += dx * 0.01;
+            mySoul.vy += dy * 0.01;
         }
         mySoul.vx *= 0.92;
         mySoul.vy *= 0.92;
