@@ -1,0 +1,25 @@
+{
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  },
+  "name": "souldrift",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ayyushrana/soul-drift-game.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ayyushrana/soul-drift-game/issues"
+  },
+  "homepage": "https://github.com/ayyushrana/soul-drift-game#readme",
+  "description": ""
+}
