@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Soul Drift Multiplayer</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(to right, #0e0e52, #1c1c8c);
+            font-family: 'Arial', sans-serif;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+        }
+        #gameUI {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        #gameUI span {
+            margin-right: 20px;
+        }
+        #menu {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            text-align: center;
+        }
+        button {
+            background: linear-gradient(to right, #4a00e0, #8e2de2);
+            border: none;
+            padding: 10px 20px;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: linear-gradient(to right, #8e2de2, #4a00e0);
+        }
+        #roomInput { margin: 10px; padding: 5px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="gameUI">
+        <span>Score P1: <span id="score1">0</span></span>
+        <span>Score P2: <span id="score2">0</span></span>
+    </div>
+    <div id="menu">
+        <h2>Soul Drift Multiplayer</h2>
+        <p>Share the room code with your friend to join the same game!</p>
+        <input id="roomInput" placeholder="Room code (optional)" />
+        <br>
+        <button id="startButton">Start / Join Room</button>
+        <button id="restartButton" style="display: none;">Play Again</button>
+        <div id="roomInfo"></div>
+        <div id="winnerMsg" style="margin-top:10px;"></div>
+    </div>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+
+    // Multiplayer
+    const socket = io();
+    let playerId = null;
+    let roomId = null;
+    
+    let gameState = 'menu';
+    let mySoul = { x: width/3, y: height/2, vx: 0, vy: 0, size: 20 };
+    let otherSoul = { x: width*2/3, y: height/2, vx: 0, vy: 0, size: 20 };
+    let orbs = [];
+    let obstacles = [];
+    let scores = { p1: 0, p2: 0 };
+    let winner = null;
+
+    // UI
+    const menu = document.getElementById('menu');
+    const startButton = document.getElementById('startButton');
+    const restartButton = document.getElementById('restartButton');
+    const score1 = document.getElementById('score1');
+    const score2 = document.getElementById('score2');
+    const roomInput = document.getElementById('roomInput');
+    const roomInfo = document.getElementById('roomInfo');
+    const winnerMsg = document.getElementById('winnerMsg');
+
+    let mouse = { down: false, x: mySoul.x, y: mySoul.y };
+
+    startButton.onclick = () => {
+        let code = roomInput.value.trim();
+        socket.emit('join', { roomId: code, width, height });
+    };
+    restartButton.onclick = () => { window.location.reload(); };
+
+    socket.on('joined', (data) => {
+        roomId = data.roomId;
+        playerId = data.playerId;
+        roomInfo.textContent = `Room code: ${roomId} (share with your friend)`;
+        winnerMsg.textContent = '';
+        startButton.style.display = 'none';
+        restartButton.style.display = 'none';
+    });
+
+    socket.on('state', (state) => {
+        // Assign souls
+        if (!playerId) return;
+        if (playerId === 'p1') {
+            mySoul.x = state.players.p1.x;
+            mySoul.y = state.players.p1.y;
+            if (state.players.p2) {
+                otherSoul.x = state.players.p2.x;
+                otherSoul.y = state.players.p2.y;
+            }
+        } else {
+            mySoul.x = state.players.p2.x;
+            mySoul.y = state.players.p2.y;
+            if (state.players.p1) {
+                otherSoul.x = state.players.p1.x;
+                otherSoul.y = state.players.p1.y;
+            }
+        }
+        orbs = state.orbs;
+        obstacles = state.obstacles;
+        scores = state.scores;
+        score1.textContent = scores.p1;
+        score2.textContent = scores.p2;
+        if (Object.keys(state.players).length === 2 && state.started) {
+            menu.style.display = 'none';
+            gameState = 'playing';
+        }
+    });
+
+    socket.on('gameover', (loserId) => {
+        gameState = 'menu';
+        menu.style.display = 'block';
+        startButton.style.display = 'none';
+        restartButton.style.display = 'inline-block';
+        winner = (loserId === playerId) ? 'You lost!' : 'You win!';
+        winnerMsg.textContent = winner;
+    });
+
+    function sendMove() {
+        socket.emit('move', { x: mySoul.x, y: mySoul.y });
+    }
+
+    function sendCollect(orbId) {
+        socket.emit('collect', orbId);
+    }
+
+    function sendHit() {
+        socket.emit('hit');
+    }
+
+    function drawSoul(soul, color) {
+        ctx.beginPath();
+        ctx.arc(soul.x, soul.y, soul.size, 0, Math.PI*2);
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 15;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+
+    function drawOrbs() {
+        orbs.forEach(orb => {
+            ctx.beginPath();
+            ctx.arc(orb.x, orb.y, orb.size, 0, Math.PI*2);
+            ctx.fillStyle = orb.color;
+            ctx.fill();
+        });
+    }
+
+    function drawObstacles() {
+        ctx.fillStyle = 'red';
+        obstacles.forEach(ob => {
+            ctx.beginPath();
+            ctx.arc(ob.x, ob.y, ob.size, 0, Math.PI*2);
+            ctx.fill();
+        });
+    }
+
+    function update() {
+        if (gameState !== 'playing') return;
+        // Move soul
+        if (mouse.down) {
+            let dx = mouse.x - mySoul.x;
+            let dy = mouse.y - mySoul.y;
+            mySoul.vx += dx * 0.01;
+            mySoul.vy += dy * 0.01;
+        }
+        mySoul.vx *= 0.92;
+        mySoul.vy *= 0.92;
+        mySoul.x += mySoul.vx;
+        mySoul.y += mySoul.vy;
+        // Boundaries
+        mySoul.x = Math.max(mySoul.size, Math.min(width-mySoul.size, mySoul.x));
+        mySoul.y = Math.max(mySoul.size, Math.min(height-mySoul.size, mySoul.y));
+        sendMove();
+        // Collect orbs
+        orbs.forEach((orb) => {
+            let dx = mySoul.x - orb.x;
+            let dy = mySoul.y - orb.y;
+            if (Math.sqrt(dx*dx+dy*dy) < mySoul.size + orb.size) {
+                sendCollect(orb.id);
+            }
+        });
+        // Obstacles
+        obstacles.forEach((ob) => {
+            let dx = mySoul.x - ob.x;
+            let dy = mySoul.y - ob.y;
+            if (Math.sqrt(dx*dx+dy*dy) < mySoul.size + ob.size) {
+                sendHit();
+            }
+        });
+    }
+
+    function draw() {
+        ctx.clearRect(0,0,width,height);
+        drawOrbs();
+        drawObstacles();
+        drawSoul(mySoul, playerId === 'p1' ? '#00ffff' : '#ff69b4');
+        drawSoul(otherSoul, playerId === 'p1' ? '#ff69b4' : '#00ffff');
+    }
+
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+    loop();
+
+    // Mouse/touch
+    canvas.addEventListener('mousedown', e => { mouse.down = true; mouse.x = e.clientX; mouse.y = e.clientY; });
+    canvas.addEventListener('mouseup', e => { mouse.down = false; });
+    canvas.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+    canvas.addEventListener('touchstart', e => { mouse.down = true; mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; });
+    canvas.addEventListener('touchend', e => { mouse.down = false; });
+    canvas.addEventListener('touchmove', e => { mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; });
+
+    window.addEventListener('resize', () => {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+    });
+    // Show menu on load
+    menu.style.display = 'block';
+    startButton.style.display = 'inline-block';
+    restartButton.style.display = 'none';
+    </script>
+</body>
+</html> 
